@@ -3,6 +3,10 @@ env_rg = {
     rg_name  = "ado-pipeline-rg"
     location = "CentralIndia"
   }
+  rgs1 = {
+    rg_name  = "ado-azure-rg"
+    location = "CentralIndia"
+  }
 }
 env_storage = {
   storage1 = {
