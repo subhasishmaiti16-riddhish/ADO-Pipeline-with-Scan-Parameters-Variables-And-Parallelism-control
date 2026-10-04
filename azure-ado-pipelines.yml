@@ -1,0 +1,252 @@
+pool: DevOps-pipeline
+
+trigger:
+- main
+- feature/*
+
+parameters:
+- name: runTrivy
+  displayName: Run Trivy
+  type: boolean
+  default: true
+
+- name: runGitleaks
+  displayName: Run Gitleaks
+  type: boolean
+  default: true
+
+- name: runTflint
+  displayName: Run Tflint
+  type: boolean
+  default: true
+
+- name: runCheckov
+  displayName: Run Checkov
+  type: boolean
+  default: true
+
+- name: runInitAndValidation
+  displayName: Run InitAndValidation
+  type: boolean
+  default: true
+
+- name: runPlan
+  displayName: Run Plan
+  type: boolean
+  default: true
+
+- name: runManualApproval
+  displayName: Run ManualApproval
+  type: boolean
+  default: true
+
+
+variables:
+  terraformWorkingDir: '$(System.DefaultWorkingDirectory)/env'
+  azureServiceConnection: 'Azure-ADO-Pipeline'
+  backendResourceGroup: 'rg-devops'
+  backendStorageAccount: 'datablockstorage'
+  backendContainer: 'aksstoragecont'
+  backendKey: 'preprod.aksstoragecont'
+
+stages:
+- stage: InitAndValidation
+  displayName: terraform Init And Validation
+
+  condition: eq('${{ parameters.runInitAndValidation }}', 'true')
+
+  jobs:
+    - job: TerraformInitAndValidation
+      displayName: Init And Validation
+      
+      steps:
+      - task: TerraformInstaller@1
+        displayName: Install Terraform
+        inputs:
+          terraformVersion: '1.15.7'
+
+      - task: TerraformTask@5
+        displayName: Init
+        inputs:
+          provider: 'azurerm'
+          command: 'init'
+          workingDirectory: '$(terraformWorkingDir)'
+          backendServiceArm: '$(azureServiceConnection)'
+          backendAzureRmResourceGroupName: '$(backendResourceGroup)'
+          backendAzureRmStorageAccountName: '$(backendStorageAccount)'
+          backendAzureRmContainerName: '$(backendContainer)'
+          backendAzureRmKey: '$(backendKey)'
+
+      - task: TerraformTask@5
+        displayName: Validation
+        inputs:
+          provider: 'azurerm'
+          command: 'validate'
+          workingDirectory: '$(terraformWorkingDir)'
+
+- stage: scanTrivy
+  displayName: Trivy Scan
+  dependsOn: InitAndValidation
+
+  condition: eq('${{ parameters.runTrivy }}', 'true')
+
+  jobs:
+    - job: Trivy
+      pool:
+        name: DevOps-pipeline
+
+      steps:
+      - task: PowerShell@2
+        displayName: Trivy Install
+        inputs:
+          targetType: 'inline'
+          script: 'choco install trivy -y'
+      - task: PowerShell@2
+        displayName: Trivy Scan
+        inputs:
+          targetType: 'inline'
+          script: 'trivy config --severity HIGH,CRITICAL --exit-code 1 "$(terraformWorkingDir)"'
+
+- stage: scanGitleaks
+  displayName: Gitleaks Scan
+  dependsOn: InitAndValidation
+
+  condition: eq('${{ parameters.runGitleaks }}', 'true')
+
+  jobs:
+    - job: Gitleaks
+      pool:
+        name: DevOps-pipeline
+
+      displayName: Gitleaks Scan
+      steps:
+      - task: PowerShell@2
+        displayName: Gitleaks Scan
+        inputs:
+          targetType: 'inline'
+          script: 'gitleaks dir .'
+
+- stage: scanTflint
+  displayName: Tflint Scan
+  dependsOn: InitAndValidation
+
+  condition: eq('${{ parameters.runTflint }}', 'true')
+
+  jobs:
+    - job: Tflint
+      pool:
+        name: DevOps-pipeline
+
+      displayName: Tflint Scan
+      steps:
+      - task: PowerShell@2
+        displayName: Tflint Scan
+        inputs:
+          targetType: 'inline'
+          script: 'tflint --recursive'
+
+- stage: scanCheckov
+  displayName: Checkov Scan
+  dependsOn: InitAndValidation
+
+  condition: eq('${{ parameters.runCheckov }}', 'true')
+
+  jobs:
+    - job: Checkov
+      pool:
+        name: DevOps-pipeline
+
+      steps:
+      - task: PowerShell@2
+        displayName: Checkov Scan
+        inputs:
+          targetType: 'inline'
+          script: 'checkov -d . --framework terraform --skip-check CKV_AZURE_59,CKV_AZURE_33,CKV_AZURE_44,CKV_AZURE_43,CKV_AZURE_206,CKV_AZURE_190,CKV2_AZURE_40,CKV2_AZURE_47,CKV2_AZURE_33,CKV2_AZURE_41,CKV2_AZURE_38,CKV2_AZURE_1'
+
+- stage: plan
+  displayName: Plan
+  dependsOn:
+  - scanCheckov
+  - scanTrivy
+  - scanTflint
+  - scanGitleaks
+
+  condition: eq('${{ parameters.runPlan }}', 'true')
+
+  jobs:
+    - job: TerraformInitAndPlan
+      displayName: Init And Plan
+      steps:
+      - task: TerraformTask@5
+        displayName: Init
+        inputs:
+          provider: 'azurerm'
+          command: 'init'
+          workingDirectory: '$(terraformWorkingDir)'
+          backendServiceArm: '$(azureServiceConnection)'
+          backendAzureRmResourceGroupName: '$(backendResourceGroup)'
+          backendAzureRmStorageAccountName: '$(backendStorageAccount)'
+          backendAzureRmContainerName: '$(backendContainer)'
+          backendAzureRmKey: '$(backendKey)'
+
+      - task: TerraformTask@5
+        displayName: Plan
+        inputs:
+          provider: 'azurerm'
+          command: 'plan'
+          workingDirectory: '$(terraformWorkingDir)'
+          environmentServiceNameAzureRM: '$(azureServiceConnection)'
+
+- stage: ManualApproval
+  displayName: Manual Approval
+  dependsOn: Plan
+
+  condition: and(succeeded(),eq('${{ parameters.runManualApproval }}', 'true'),eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+
+  jobs:
+  - job: ManualApproval
+    displayName: Wait for Approval
+    pool: server
+
+    steps:
+    - task: ManualValidation@1
+      inputs:
+        notifyUsers: 'subhasishmaiti16@gmail.com'
+        instructions: |
+          Terraform Plan completed successfully.
+          
+          Please review the Terraform Plan.
+          Approve to continue with Terraform Apply.
+        onTimeout: reject
+
+- stage: TerraformApply
+  displayName: Terraform Apply
+  dependsOn: ManualApproval
+
+  condition: and(succeeded(),eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+
+  jobs:
+  - job: Apply
+    pool:
+      name: DevOps-pipeline
+
+    steps:
+    - task: TerraformTask@5
+      displayName: Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(terraformWorkingDir)'
+        backendServiceArm: '$(azureServiceConnection)'
+        backendAzureRmResourceGroupName: '$(backendResourceGroup)'
+        backendAzureRmStorageAccountName: '$(backendStorageAccount)'
+        backendAzureRmContainerName: '$(backendContainer)'
+        backendAzureRmKey: '$(backendKey)'
+
+    - task: TerraformTask@5
+      displayName: Apply
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: '$(terraformWorkingDir)'
+        environmentServiceNameAzureRM: '$(azureServiceConnection)'
