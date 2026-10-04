@@ -5,6 +5,11 @@ trigger:
 - feature/*
 
 parameters:
+- name: runSonarQube
+  displayName: Run SonarQube
+  type: boolean
+  default: true
+
 - name: runTrivy
   displayName: Run Trivy
   type: boolean
@@ -42,10 +47,10 @@ parameters:
 
 
 variables:
-  terraformWorkingDir: '$(System.DefaultWorkingDirectory)/env'
+  terraformWorkingDir: '$(System.DefaultWorkingDirectory)/***'
   azureServiceConnection: 'Azure-ADO-Pipeline'
-  backendResourceGroup: 'rg-devops'
-  backendStorageAccount: 'datablockstorage'
+  backendResourceGroup: '***'
+  backendStorageAccount: '***'
   backendContainer: 'aksstoragecont'
   backendKey: 'preprod.aksstoragecont'
 
@@ -58,7 +63,7 @@ stages:
   jobs:
     - job: TerraformInitAndValidation
       displayName: Init And Validation
-      
+
       steps:
       - task: TerraformInstaller@1
         displayName: Install Terraform
@@ -83,6 +88,42 @@ stages:
           provider: 'azurerm'
           command: 'validate'
           workingDirectory: '$(terraformWorkingDir)'
+
+# =========================================================
+# SonarQube Analysis
+# =========================================================
+
+- stage: SonarQube
+  displayName: SonarQube Analysis
+  dependsOn: InitAndValidation
+
+  condition: eq('${{ parameters.runSonarQube }}', 'true')
+
+  jobs:
+  - job: SonarQube
+    displayName: SonarQube Scan
+    pool:
+      name: DevOps-pipeline
+
+    steps:
+
+    - task: SonarQubePrepare@7
+      displayName: Prepare SonarQube Analysis
+      inputs:
+        SonarQube: 'azure-ado-pipeline-cicd'
+        scannerMode: 'cli'
+        configMode: 'manual'
+        cliProjectKey: 'sonarqube-new-kallu'
+        cliProjectName: 'Subha UI'
+        cliSources: '$(terraformWorkingDir)'
+
+    - task: SonarQubeAnalyze@7
+      displayName: Run SonarQube Analysis
+
+    - task: SonarQubePublish@7
+      displayName: Publish SonarQube Results
+      inputs:
+        pollingTimeoutSec: '300'
 
 - stage: scanTrivy
   displayName: Trivy Scan
