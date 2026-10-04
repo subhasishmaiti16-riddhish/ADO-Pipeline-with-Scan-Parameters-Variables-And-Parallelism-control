@@ -15,7 +15,6 @@ terraform {
     key                  = "preprod.aksstoragecont"
 
   }
-
 }
 provider "azurerm" {
   features {}
