@@ -4,7 +4,7 @@ env_rg = {
     location = "CentralIndia"
   }
   rgs1 = {
-    rg_name  = "ado-azure"
+    rg_name  = "ado-azure-rg"
     location = "CentralIndia"
   }
 }
