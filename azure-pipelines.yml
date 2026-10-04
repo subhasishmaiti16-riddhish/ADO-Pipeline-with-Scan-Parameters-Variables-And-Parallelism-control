@@ -70,6 +70,11 @@ stages:
         inputs:
           terraformVersion: '1.15.7'
 
+      - powershell: |
+          terraform version
+          where.exe terraform
+        displayName: Verify Terraform
+
       - task: TerraformTask@5
         displayName: Init
         inputs:
