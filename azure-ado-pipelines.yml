@@ -58,7 +58,13 @@ stages:
   jobs:
     - job: TerraformInitAndValidation
       displayName: Init And Validation
+      
       steps:
+      - task: TerraformInstaller@1
+        displayName: Install Terraform
+        inputs:
+          terraformVersion: '1.15.7'
+
       - task: TerraformTask@5
         displayName: Init
         inputs:
