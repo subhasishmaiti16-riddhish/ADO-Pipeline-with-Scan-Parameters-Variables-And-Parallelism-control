@@ -103,6 +103,26 @@ stages:
 
     steps:
 
+    - task: PowerShell@2
+      displayName: Configure Java
+      inputs:
+        targetType: 'inline'
+        script: |
+          $javaHome = "C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot"
+
+          if (-not (Test-Path "$javaHome\bin\java.exe")) {
+              Write-Error "Java not found at $javaHome"
+              exit 1
+          }
+
+          Write-Host "##vso[task.setvariable variable=JAVA_HOME]$javaHome"
+          Write-Host "##vso[task.prependpath]$javaHome\bin"
+
+          Write-Host "JAVA_HOME configured:"
+          Write-Host $javaHome
+
+          & "$javaHome\bin\java.exe" -version
+
     - task: SonarQubePrepare@7
       displayName: Prepare SonarQube Analysis
       inputs:
