@@ -89,10 +89,6 @@ stages:
           command: 'validate'
           workingDirectory: '$(terraformWorkingDir)'
 
-# =========================================================
-# SonarQube Analysis
-# =========================================================
-
 - stage: SonarQube
   displayName: SonarQube Analysis
   dependsOn: InitAndValidation
